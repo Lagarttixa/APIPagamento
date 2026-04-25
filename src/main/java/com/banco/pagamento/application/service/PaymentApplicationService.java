@@ -4,13 +4,13 @@ import com.banco.pagamento.application.port.in.PaymentQueryUseCase;
 import com.banco.pagamento.application.port.in.ProcessPaymentUseCase;
 import com.banco.pagamento.application.port.in.dto.CreatePaymentCommand;
 import com.banco.pagamento.application.port.in.dto.PaymentResponse;
+import com.banco.pagamento.application.validators.PagamentoValidator;
 import com.banco.pagamento.domain.model.Payment;
 import com.banco.pagamento.domain.model.PaymentMethod;
 import com.banco.pagamento.domain.port.out.PaymentRepository;
 import com.banco.pagamento.domain.strategy.PaymentStrategy;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -22,18 +22,21 @@ import java.util.stream.Collectors;
 public class PaymentApplicationService implements ProcessPaymentUseCase, PaymentQueryUseCase {
     private final PaymentRepository paymentRepository;
     private final Map<PaymentMethod, PaymentStrategy> strategiesByMethod;
+    private final PagamentoValidator pagamentoValidator;
 
     public PaymentApplicationService(PaymentRepository paymentRepository,
-                                     List<PaymentStrategy> strategiesByMethod
+                                     List<PaymentStrategy> strategiesByMethod,
+                                     PagamentoValidator pagamentoValidator
     ) {
         this.paymentRepository = paymentRepository;
         this.strategiesByMethod = strategiesByMethod.stream()
                 .collect(Collectors.toMap(PaymentStrategy::getPaymentMethod, Function.identity()));
+        this.pagamentoValidator = pagamentoValidator;
     }
 
     @Override
     public PaymentResponse process(CreatePaymentCommand command) {
-        validate(command);
+        pagamentoValidator.validate(command);
 
         Payment payment = Payment.newPayment(command.amount(), command.method(), command.description());
         Payment processed = processPaymentByMethod(payment);
@@ -53,18 +56,6 @@ public class PaymentApplicationService implements ProcessPaymentUseCase, Payment
         return paymentRepository.findAll().stream()
                 .map(PaymentResponse::from)
                 .toList();
-    }
-
-    private void validate(CreatePaymentCommand command) {
-        if (command == null) {
-            throw new IllegalArgumentException("Comando de pagamento deve ser informado.");
-        }
-        if (command.amount() == null || command.amount().compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException("Valor deve ser maior que zero.");
-        }
-        if (command.method() == null) {
-            throw new IllegalArgumentException("Forma de pagamento deve ser informada.");
-        }
     }
 
     private Payment processPaymentByMethod(Payment payment) {
